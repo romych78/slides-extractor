@@ -158,6 +158,77 @@ videos/
 3. Через **ffmpeg** concat demuxer собирает видеопоток с точными `duration` по кадрам.
 4. Накладывает аудио из исходного файла (если есть).
 
+## 3. Регенерация слайдов (`slide_processor.py`)
+
+Отдельный CLI: анализирует каждый слайд через **Gemini Vision**, генерирует
+чистый акварельный фон высокого разрешения через **Imagen 3** и накладывает
+исходный текст средствами **Pillow**. Подробное ТЗ — `tz.md`.
+
+```bash
+pip install -r requirements.txt
+cp .env.example .env        # заполнить GEMINI_API_KEY
+# положить Inter-Bold.ttf / Inter-Regular.ttf в assets/fonts/ (см. assets/fonts/README.md)
+
+python slide_processor.py --input-dir videos
+# принудительная перегенерация всех файлов:
+python slide_processor.py --input-dir videos --force
+```
+
+- Рекурсивно ищет `*.jpg` / `*.png` в `--input-dir`, пропуская файлы с `_upd` в имени.
+- Результат пишется **рядом с оригиналом**: `01.png` → `01_upd.jpg` (1920×1080, JPEG q=95).
+- Идемпотентно: существующий `NN_upd.jpg` не перегенерируется без `--force`.
+- Устойчиво к rate limit / 5xx (exponential backoff, до 3 проходов сверки).
+- Чтобы встроить результат в пайплайн `--update` выше, перенесите `*_upd.jpg`
+  из папки слайдов в `<stem>_upd/`:
+
+```bash
+./move_upd_files.sh videos
+python extract_slides.py videos/ --update
+```
+
+### Imagen 3 vs обычный API-ключ
+
+Обычный `GEMINI_API_KEY` (AI Studio) **не даёт доступа к Imagen 3** —
+`imagen-3.0-generate-002` доступна только через Vertex AI (сейчас
+маркетингово называется "Gemini Enterprise Agent Platform"). Без Vertex
+скрипт использует нативные Gemini image-модели (`gemini-2.5-flash-image` и
+т.п.) через `generate_content` — работает, но без честного `negative_prompt`,
+поэтому текст/цифры иногда просачиваются на фон.
+
+Два способа включить режим Vertex в `.env`:
+
+**Express Mode (проще, без gcloud)** — ключ из Vertex AI Studio / Express Mode:
+
+```env
+GOOGLE_GENAI_USE_VERTEXAI=true
+GOOGLE_CLOUD_API_KEY="AQ...."
+```
+
+**ADC / service account** — через `gcloud`:
+
+```bash
+gcloud config set project ВАШ_PROJECT_ID
+gcloud auth application-default login
+```
+
+```env
+GOOGLE_GENAI_USE_VERTEXAI=true
+GOOGLE_CLOUD_PROJECT="ВАШ_PROJECT_ID"
+GOOGLE_CLOUD_LOCATION="us-central1"
+```
+
+В обоих случаях сам факт включения Vertex **не гарантирует доступ к Imagen 3** —
+модель `imagen-3.0-generate-002` должна быть отдельно включена в Model Garden
+вашего проекта (Cloud Console → Vertex AI → Model Garden → поиск "Imagen" →
+Enable/Request access). Если её там нет — ставьте
+`IMAGEN_MODEL="gemini-2.5-flash-image"` даже при включённом Vertex, это
+подтверждённо работает и через Express-ключ, и через ADC.
+
+`slide_processor.py` сам выбирает `generate_images` (Imagen, честный
+`negative_prompt`) или `generate_content` (Gemini image models, negative-текст
+дописывается в промпт) в зависимости от того, есть ли `"imagen"` в названии
+`IMAGEN_MODEL`.
+
 ## Локальные данные
 
 Папка `videos/` (исходники, слайды, `*_upd`) **не коммитится** — см. `.gitignore`.

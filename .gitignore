@@ -2,6 +2,9 @@
 videos/
 slides_out/
 
+# Secrets
+.env
+
 # Python
 .venv/
 venv/
