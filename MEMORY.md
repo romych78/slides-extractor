@@ -31,6 +31,7 @@ CLI-утилиты для обучающих видео, где «видео» �
 | `extract_slides.py` | извлечение слайдов из видео + `--update` пересборка |
 | `slide_processor.py` | AI-регенерация слайдов (Gemini Vision → Imagen 3 → Pillow) |
 | `move_upd_files.sh` | переносит `*_upd.*` файлы из папки слайдов в `<stem>_upd/` |
+| `fake_generate_upd.sh` | заглушка вместо `slide_processor.py`: создаёт `NN_upd.*` как простые копии оригиналов (без AI) — для проверки пайплайна `extract_slides.py --update` без реальной генерации |
 | `tz.md` | полное ТЗ на `slide_processor.py` (источник истины по алгоритму/схеме) |
 | `.env.example` | шаблон конфига (реальный `.env` — секрет, не коммитить) |
 | `assets/fonts/` | сюда класть реальные .ttf (не входят в репо) |
@@ -49,6 +50,13 @@ python slide_processor.py --input-dir videos   # 2. NN.png -> NN_upd.jpg ряд�
 ./move_upd_files.sh videos                 # 3. перенести *_upd.jpg в <stem>_upd/
 extract_slides.py videos/ --update         # 4. пересобрать видео с новыми слайдами
 ```
+
+Для проверки шагов 3-4 без реального AI-вызова шаг 2 можно заменить на
+`./fake_generate_upd.sh videos` — он кладёт `NN_upd.<ext>` рядом с оригиналом
+(как `slide_processor.py`), но это просто копия `NN.<ext>` (расширение
+сохраняется, не приводится к `.jpg`, в отличие от настоящей генерации).
+Идемпотентен как и `slide_processor.py`: пропускает существующий `NN_upd.*`,
+если не передан `--force`.
 
 ## Архитектура slide_processor.py (нетривиальные решения)
 - Imagen 3 (`imagen-3.0-generate-002`) — **только text-to-image**, нет
